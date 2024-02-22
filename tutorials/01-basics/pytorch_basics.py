@@ -2,7 +2,7 @@
 # @Author: Arunabh Sharma
 # @Date:   2024-02-19 23:14:58
 # @Last Modified by:   Arunabh Sharma
-# @Last Modified time: 2024-02-21 00:31:38
+# @Last Modified time: 2024-02-21 23:16:35
 
 
 # Basic quadratic autograd example
@@ -10,6 +10,8 @@ import torch
 import numpy as np
 import torchvision
 import cv2
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def quadratic_function():
@@ -134,14 +136,18 @@ def transfer_learning(train_loader, model_save=True):
     resnet.fc = torch.nn.Linear(resnet.fc.in_features, 10)
     print(resnet)
 
-    n_iter = 5
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(resnet.parameters(), lr=1e-6)
+    resnet = resnet.to(device)
 
-    for i in range(n_iter):
+    epoch = 5
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(resnet.parameters())
+
+    for i in range(epoch):
         data_iter = iter(train_loader)
         while (ret := next(data_iter, None)) is not None:
             images, labels = ret[0], ret[1]
+            images = images.to(device)
+            labels = labels.to(device)
             loss = criterion(resnet(images), labels)
 
             print(f"Iteration: {i}, Loss: {loss.item()}")
@@ -155,8 +161,8 @@ def transfer_learning(train_loader, model_save=True):
     return resnet
 
 
-def explore_transfer_learning(test_loader):
-    model = torch.load("model.ckpt")
+def explore_transfer_learning(test_loader, model_name):
+    model = torch.load(model_name).to("cpu")
     model.eval()
 
     window_name = "Image"
@@ -179,6 +185,8 @@ def explore_transfer_learning(test_loader):
 
     with torch.no_grad():
         for image, label in test_loader:
+            # image_r = image.reshape(-1, 28 * 28)
+            # pred_label = model(image_r)
             pred_label = model(image)
             img = image[0].numpy().transpose(1, 2, 0)
             img = cv2.resize(img, (800, 800))
@@ -211,7 +219,45 @@ def explore_transfer_learning(test_loader):
                 exit(0)
 
 
+class NeuralNetwork(torch.nn.Module):
+    def __init__(self):
+        super(NeuralNetwork, self).__init__()
+        self.fc0 = torch.nn.Linear(28 * 28, 128)
+        self.nl1 = torch.nn.ReLU()
+        self.fc1 = torch.nn.Linear(128, 10)
+
+    def forward(self, x):
+        return self.fc1(self.nl1(self.fc0(x)))
+
+
+def train_nn(train_loader, model_save=True):
+    model = NeuralNetwork().to(device)
+
+    epoch = 1
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters())
+
+    for i in range(epoch):
+        data_iter = iter(train_loader)
+        while (ret := next(data_iter, None)) is not None:
+            images, labels = ret[0], ret[1]
+            images = images.reshape(-1, 28 * 28).to(device)
+            labels = labels.to(device)
+            loss = criterion(model(images), labels)
+
+            print(f"Iteration: {i}, Loss: {loss.item()}")
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+    if model_save:
+        torch.save(model, "nn.ckpt")
+
+    return model
+
+
 if __name__ == "__main__":
     train_loader, test_loader = torch_dataset_loader(False)
-    # _ = transfer_learning(train_loader)
-    explore_transfer_learning(test_loader)
+    _ = transfer_learning(train_loader)
+    explore_transfer_learning(test_loader, "model.ckpt")
+    # explore_transfer_learning(test_loader, "nn.ckpt")
