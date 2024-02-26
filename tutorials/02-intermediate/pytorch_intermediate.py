@@ -2,7 +2,7 @@
 # @Author: Arunabh Sharma
 # @Date:   2024-02-21 23:38:56
 # @Last Modified by:   Arunabh Sharma
-# @Last Modified time: 2024-02-25 22:14:30
+# @Last Modified time: 2024-02-25 23:03:45
 
 import torch
 import torchvision
@@ -10,7 +10,8 @@ import numpy as np
 import torchvision.transforms as transforms
 import cv2
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 
 def torch_dataset_loader(img_display=False):
@@ -248,17 +249,33 @@ class Resnet(torch.nn.Module):
 
 
 class RNN(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+    def __init__(
+        self, input_size, hidden_size, num_layers, num_classes, bidirectional=False
+    ):
         super(RNN, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.lstm = torch.nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = torch.nn.Linear(hidden_size, num_classes)
+        self.lstm = torch.nn.LSTM(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True,
+            bidirectional=bidirectional,
+        )
+        self.bidirectional = bidirectional
+        if bidirectional:
+            self.fc = torch.nn.Linear(hidden_size * 2, num_classes)
+        else:
+            self.fc = torch.nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
         # Set initial hidden and cell states
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        if self.bidirectional:
+            h0 = torch.zeros(2 * self.num_layers, x.size(0), self.hidden_size)
+            c0 = torch.zeros(2 * self.num_layers, x.size(0), self.hidden_size)
+        else:
+            h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+            c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
 
         # Forward propagate LSTM
         out, _ = self.lstm(
@@ -272,7 +289,7 @@ class RNN(torch.nn.Module):
 
 if __name__ == "__main__":
     train_loader, test_loader = torch_dataset_loader(False)
-    model_name = "rnn.ckpt"
-    model = RNN(28, 128, 2, 10)
-    # _ = train_model(model, 4, train_loader, model_name, True)
+    model_name = "bi_rnn.ckpt"
+    model = RNN(28, 128, 2, 10, True)
+    _ = train_model(model, 4, train_loader, model_name, True)
     explore_model(test_loader, model_name)
